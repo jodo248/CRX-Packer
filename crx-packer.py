@@ -42,7 +42,7 @@ class CRX(object):
             self.key_file.replace('\\', '/'),
             self.zip_file.replace('\\', '/')])
         # Generate header.
-        magic_number = 'Cr24'
+        magic_number = b'Cr24'
         version = struct.pack("<I", 2)
         pub_key_len = struct.pack("<I", len(pub_key))
         signature_len = struct.pack("<I", len(signature))
