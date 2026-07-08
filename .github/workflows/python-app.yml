@@ -26,13 +26,12 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyOpenSSL
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Install Chrome 119
+    - name: Install Chrome 122
       uses: browser-actions/setup-chrome@v2
       id: setup-chrome
       with:
-        chrome-version: 119
+        chrome-version: 122
     - name: Pack extension with Chrome
       run: |
         sudo apt-get update && sudo apt-get install -y xvfb
