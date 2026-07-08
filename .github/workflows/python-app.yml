@@ -36,7 +36,7 @@ jobs:
     - name: Pack extension with Chrome
       run: |
         sudo apt-get update && sudo apt-get install -y xvfb
-        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension=./Tampermonkey --pack-extension-key=./key.pem --no-message-box
+        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension=./Tampermonkey --pack-extension-key=./key.pem --no-message-box --no-sandbox
         mv ./Tampermonkey.crx ./Tampermonkey_5-1-1.crx
     - name: Upload CRX artifact
       uses: actions/upload-artifact@v7
