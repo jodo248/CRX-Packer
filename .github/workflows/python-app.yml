@@ -28,9 +28,16 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyOpenSSL
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Run
+    - name: Install Chrome 119
+      uses: browser-actions/setup-chrome@v2
+      id: setup-chrome
+      with:
+        chrome-version: 119
+    - name: Pack extension with Chrome
       run: |
-        python crx-packer.py --dir ./Tampermonkey --key ./key.pem --crx Tampermonkey_5-1-1.crx
+        sudo apt-get update && sudo apt-get install -y xvfb
+        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension=./Tampermonkey --pack-extension-key=./key.pem --no-message-box
+        mv ./Tampermonkey.crx ./Tampermonkey_5-1-1.crx
     - name: Upload CRX artifact
       uses: actions/upload-artifact@v7
       with:
