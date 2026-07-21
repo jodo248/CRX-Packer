@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# Change these two values to build a different extension - nothing else in this
+# file needs to be touched.
+env:
+  EXTENSION_NAME: Tampermonkey
+  EXTENSION_VERSION: 5-1-1
+
 jobs:
   build:
 
@@ -32,15 +38,52 @@ jobs:
       id: setup-chrome
       with:
         chrome-version: 122
+    - name: Extract extension source
+      run: |
+        set -e
+        ARCHIVE=$(find . -maxdepth 1 \( -iname "*.zip" -o -iname "*.tar.gz" -o -iname "*.tgz" \) | head -n 1)
+        if [ -z "$ARCHIVE" ]; then
+          echo "::error::No .zip or .tar.gz source archive found in repo root"
+          exit 1
+        fi
+        echo "Found source archive: $ARCHIVE"
+
+        rm -rf "./$EXTENSION_NAME"
+        mkdir -p "./$EXTENSION_NAME"
+
+        case "$ARCHIVE" in
+          *.zip)
+            unzip -q "$ARCHIVE" -d "./$EXTENSION_NAME"
+            ;;
+          *.tar.gz|*.tgz)
+            tar -xzf "$ARCHIVE" -C "./$EXTENSION_NAME"
+            ;;
+        esac
+
+        # If the archive wrapped everything in one subfolder (e.g. a GitHub-style
+        # "reponame-branch/" zip), flatten it so manifest.json ends up at the top level.
+        if [ ! -f "./$EXTENSION_NAME/manifest.json" ]; then
+          INNER_DIRS=$(find "./$EXTENSION_NAME" -mindepth 1 -maxdepth 1 -type d)
+          INNER_COUNT=$(echo "$INNER_DIRS" | grep -c . || true)
+          if [ "$INNER_COUNT" -eq 1 ] && [ -f "$INNER_DIRS/manifest.json" ]; then
+            echo "Flattening nested folder: $INNER_DIRS"
+            shopt -s dotglob
+            mv "$INNER_DIRS"/* "./$EXTENSION_NAME/"
+            rmdir "$INNER_DIRS"
+          fi
+        fi
+
+        echo "Extracted contents:"
+        ls -la "./$EXTENSION_NAME"
     - name: Pack extension with Chrome
       run: |
         sudo apt-get update && sudo apt-get install -y xvfb
-        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension=./Tampermonkey --pack-extension-key=./key.pem --no-message-box --no-sandbox --no-zygote --disable-dev-shm-usage
-        mv ./Tampermonkey.crx ./Tampermonkey_5-1-1.crx
+        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension="./$EXTENSION_NAME" --pack-extension-key=./key.pem --no-message-box --no-sandbox --no-zygote --disable-dev-shm-usage
+        mv "./$EXTENSION_NAME.crx" "./${EXTENSION_NAME}_${EXTENSION_VERSION}.crx"
     - name: Upload CRX artifact
       uses: actions/upload-artifact@v7
       with:
-        path: Tampermonkey_5-1-1.crx
+        path: ${{ env.EXTENSION_NAME }}_${{ env.EXTENSION_VERSION }}.crx
         archive: false
         if-no-files-found: error
         retention-days: 1
