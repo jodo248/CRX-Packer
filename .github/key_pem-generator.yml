@@ -1,0 +1,23 @@
+name: Generate Key and Upload to Artifacts
+
+on:
+  workflow_dispatch: # Allows you to trigger this manually from the GitHub UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Generate the private key using OpenSSL
+      - name: Generate RSA Private Key
+        run: |
+          openssl genrsa -out key.pem 4048
+          chmod 600 key.pem
+
+      # Step 2: Upload the key.pem file as a workflow artifact
+      - name: Upload Key to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: secure-private-key
+          path: key.pem
+          retention-days: 1 # Automatically deletes the sensitive key after 1 day
