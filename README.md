@@ -2,11 +2,11 @@
 
 ## **Usage (New)**
 
-1. Upload chromium extension in zip to `./*.zip`
+1. Upload chromium extension in zip format `./*.zip`.
 
-2. Run CRX Packer workflow.
+2. Run `CRX Packer` in GitHub Action .
    
-4. Download CRX from the Artifact
+4. Download the CRX from the Artifact.
 
 
 Usage [OLD]
