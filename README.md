@@ -9,7 +9,7 @@
 4. Download the CRX from the Artifact.
 
 
-Usage [OLD]
+Usage (OLD)
 -----
 
 This Python script packs Google Chrome extensions (CRX files).
