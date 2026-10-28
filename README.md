@@ -1,5 +1,4 @@
-crx-packer
-==========
+# CRX Packer
 
 ## **Usage (New)**
 
