@@ -17,9 +17,15 @@ permissions:
 
 # ── Only these two lines need changing for a different extension ─────────────
 env:
-  EXTENSION_NAME: test
-  EXTENSION_VERSION: ""   # blank → output is  name.crx
-                          # e.g. "5-1-1" → output is  name_5-1-1.crx
+  EXTENSION_NAME: ""   # blank → zip filename is used as the CRX base name
+                       # set   → this value is used instead
+  EXTENSION_VERSION: ""   # blank → no version suffix
+                          # e.g. "5-1-1" → _5-1-1 appended before .crx
+#
+#  Name + Version  →  name_version.crx
+#  Name only       →  name.crx
+#  Version only    →  zip-name_version.crx
+#  Neither         →  zip-name.crx
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -73,34 +79,47 @@ jobs:
           fi
           echo "Found archive: $ARCHIVE"
 
-          rm -rf "./$EXTENSION_NAME"
-          mkdir -p "./$EXTENSION_NAME"
+          # Derive the base name from the archive filename (strip path + all extensions).
+          ZIP_BASE=$(basename "$ARCHIVE")
+          case "$ZIP_BASE" in
+            *.tar.gz) ZIP_BASE_NAME="${ZIP_BASE%.tar.gz}" ;;
+            *.tgz)    ZIP_BASE_NAME="${ZIP_BASE%.tgz}" ;;
+            *)        ZIP_BASE_NAME="${ZIP_BASE%.*}" ;;
+          esac
+          echo "ZIP_BASE_NAME=$ZIP_BASE_NAME" >> "$GITHUB_ENV"
+
+          # When EXTENSION_NAME is blank, fall back to the zip's base name.
+          FOLDER_NAME="${EXTENSION_NAME:-$ZIP_BASE_NAME}"
+          echo "FOLDER_NAME=$FOLDER_NAME" >> "$GITHUB_ENV"
+
+          rm -rf "./$FOLDER_NAME"
+          mkdir -p "./$FOLDER_NAME"
 
           case "$ARCHIVE" in
-            *.zip)           unzip -q "$ARCHIVE" -d "./$EXTENSION_NAME" ;;
-            *.tar.gz|*.tgz)  tar -xzf "$ARCHIVE" -C "./$EXTENSION_NAME" ;;
+            *.zip)           unzip -q "$ARCHIVE" -d "./$FOLDER_NAME" ;;
+            *.tar.gz|*.tgz)  tar -xzf "$ARCHIVE" -C "./$FOLDER_NAME" ;;
           esac
 
           # Flatten a single wrapper folder so manifest.json is at the top level.
           # Handles GitHub-style exports (e.g. reponame-main/manifest.json).
-          if [ ! -f "./$EXTENSION_NAME/manifest.json" ]; then
-            INNER=$(find "./$EXTENSION_NAME" -mindepth 1 -maxdepth 1 -type d)
+          if [ ! -f "./$FOLDER_NAME/manifest.json" ]; then
+            INNER=$(find "./$FOLDER_NAME" -mindepth 1 -maxdepth 1 -type d)
             INNER_COUNT=$(echo "$INNER" | grep -c . || true)
             if [ "$INNER_COUNT" -eq 1 ] && [ -f "$INNER/manifest.json" ]; then
               echo "Flattening nested folder: $INNER"
               shopt -s dotglob
-              mv "$INNER"/* "./$EXTENSION_NAME/"
+              mv "$INNER"/* "./$FOLDER_NAME/"
               rmdir "$INNER"
             fi
           fi
 
-          if [ ! -f "./$EXTENSION_NAME/manifest.json" ]; then
+          if [ ! -f "./$FOLDER_NAME/manifest.json" ]; then
             echo "::error::manifest.json not found after extraction — check your archive structure."
             exit 1
           fi
 
           echo "Extracted contents:"
-          ls -la "./$EXTENSION_NAME"
+          ls -la "./$FOLDER_NAME"
 
       # ── Pack ──────────────────────────────────────────────────────────────
       - name: Pack extension with Chrome
@@ -112,20 +131,28 @@ jobs:
           # --no-zygote        : skips the zygote subprocess that fails with a second sandbox check
           # --disable-dev-shm-usage : prevents /dev/shm OOM crashes on constrained runners
           xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" \
-            --pack-extension="./$EXTENSION_NAME" \
+            --pack-extension="./$FOLDER_NAME" \
             --pack-extension-key=./key.pem \
             --no-message-box \
             --no-sandbox \
             --no-zygote \
             --disable-dev-shm-usage
 
-          # Chrome always outputs <folder-name>.crx — rename only when a version is set.
-          if [ -n "$EXTENSION_VERSION" ]; then
-            OUTPUT_CRX="${EXTENSION_NAME}_${EXTENSION_VERSION}.crx"
-            mv "./$EXTENSION_NAME.crx" "./$OUTPUT_CRX"
+          # Chrome always outputs <folder-name>.crx.
+          # Pick the final CRX name based on which of the two env vars are set.
+          if [ -n "$EXTENSION_NAME" ] && [ -n "$EXTENSION_VERSION" ]; then
+            OUTPUT_CRX="${EXTENSION_NAME}_${EXTENSION_VERSION}.crx"   # both set
+          elif [ -n "$EXTENSION_NAME" ]; then
+            OUTPUT_CRX="${EXTENSION_NAME}.crx"                         # name only
+          elif [ -n "$EXTENSION_VERSION" ]; then
+            OUTPUT_CRX="${ZIP_BASE_NAME}_${EXTENSION_VERSION}.crx"     # version only
           else
-            OUTPUT_CRX="${EXTENSION_NAME}.crx"
-            # File is already named correctly; no rename needed.
+            OUTPUT_CRX="${ZIP_BASE_NAME}.crx"                          # neither set
+          fi
+
+          BUILT_CRX="./${FOLDER_NAME}.crx"
+          if [ "./$OUTPUT_CRX" != "$BUILT_CRX" ]; then
+            mv "$BUILT_CRX" "./$OUTPUT_CRX"
           fi
 
           echo "OUTPUT_CRX=$OUTPUT_CRX" >> "$GITHUB_ENV"
