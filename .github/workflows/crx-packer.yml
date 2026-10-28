@@ -1,0 +1,147 @@
+name: CRX Packer
+
+on:
+#  push:
+#    branches: [ "master" ]
+#  pull_request:
+#    branches: [ "master" ]
+  workflow_dispatch:
+
+# actions: write  →  lets GITHUB_TOKEN call  gh variable set
+# For private repos, create a GH_PAT secret (classic PAT with 'repo' scope,
+# or a fine-grained PAT with 'Actions variables: read/write') and the
+# workflow will prefer it over the default token automatically.
+permissions:
+  contents: read
+  actions: write
+
+# ── Only these two lines need changing for a different extension ─────────────
+env:
+  EXTENSION_NAME: test
+  EXTENSION_VERSION: ""   # blank → output is  name.crx
+                          # e.g. "5-1-1" → output is  name_5-1-1.crx
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Chrome 124
+        uses: browser-actions/setup-chrome@v2
+        id: setup-chrome
+        with:
+          chrome-version: 124
+
+      # ── Key management ────────────────────────────────────────────────────
+      # First run : generates a fresh RSA-2048 key and stores it as the
+      #             repository variable CRX3_PRIVATE_KEY.
+      # Every run : restores the same key from that variable so the
+      #             extension ID never changes across builds.
+      - name: Prepare signing key
+        env:
+          # Prefer a personal PAT if provided; fall back to the built-in token.
+          GH_TOKEN: ${{ secrets.GH_PAT != '' && secrets.GH_PAT || github.token }}
+          STORED_KEY: ${{ vars.CRX3_PRIVATE_KEY }}
+        run: |
+          set -e
+          if [ -z "$STORED_KEY" ]; then
+            echo "CRX3_PRIVATE_KEY not set — generating a new RSA-2048 key..."
+            openssl genrsa -out key.pem 2048
+            gh variable set CRX3_PRIVATE_KEY \
+              --body "$(cat key.pem)" \
+              --repo "$GITHUB_REPOSITORY"
+            echo "Key generated and saved to repository variable CRX3_PRIVATE_KEY."
+          else
+            echo "Restoring key from repository variable CRX3_PRIVATE_KEY."
+            # printf preserves the PEM line endings exactly
+            printf '%s\n' "$STORED_KEY" > key.pem
+          fi
+          # Verify the key is structurally valid before attempting to pack
+          openssl rsa -in key.pem -check -noout
+
+      # ── Source extraction ─────────────────────────────────────────────────
+      - name: Extract extension source
+        run: |
+          set -e
+          ARCHIVE=$(find . -maxdepth 1 \( -iname "*.zip" -o -iname "*.tar.gz" -o -iname "*.tgz" \) | head -n 1)
+          if [ -z "$ARCHIVE" ]; then
+            echo "::error::No .zip or .tar.gz archive found in the repository root."
+            exit 1
+          fi
+          echo "Found archive: $ARCHIVE"
+
+          rm -rf "./$EXTENSION_NAME"
+          mkdir -p "./$EXTENSION_NAME"
+
+          case "$ARCHIVE" in
+            *.zip)           unzip -q "$ARCHIVE" -d "./$EXTENSION_NAME" ;;
+            *.tar.gz|*.tgz)  tar -xzf "$ARCHIVE" -C "./$EXTENSION_NAME" ;;
+          esac
+
+          # Flatten a single wrapper folder so manifest.json is at the top level.
+          # Handles GitHub-style exports (e.g. reponame-main/manifest.json).
+          if [ ! -f "./$EXTENSION_NAME/manifest.json" ]; then
+            INNER=$(find "./$EXTENSION_NAME" -mindepth 1 -maxdepth 1 -type d)
+            INNER_COUNT=$(echo "$INNER" | grep -c . || true)
+            if [ "$INNER_COUNT" -eq 1 ] && [ -f "$INNER/manifest.json" ]; then
+              echo "Flattening nested folder: $INNER"
+              shopt -s dotglob
+              mv "$INNER"/* "./$EXTENSION_NAME/"
+              rmdir "$INNER"
+            fi
+          fi
+
+          if [ ! -f "./$EXTENSION_NAME/manifest.json" ]; then
+            echo "::error::manifest.json not found after extraction — check your archive structure."
+            exit 1
+          fi
+
+          echo "Extracted contents:"
+          ls -la "./$EXTENSION_NAME"
+
+      # ── Pack ──────────────────────────────────────────────────────────────
+      - name: Pack extension with Chrome
+        run: |
+          set -e
+          sudo apt-get update && sudo apt-get install -y xvfb
+
+          # --no-sandbox       : bypasses the SUID sandbox check (not present on CI runners)
+          # --no-zygote        : skips the zygote subprocess that fails with a second sandbox check
+          # --disable-dev-shm-usage : prevents /dev/shm OOM crashes on constrained runners
+          xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" \
+            --pack-extension="./$EXTENSION_NAME" \
+            --pack-extension-key=./key.pem \
+            --no-message-box \
+            --no-sandbox \
+            --no-zygote \
+            --disable-dev-shm-usage
+
+          # Chrome always outputs <folder-name>.crx — rename only when a version is set.
+          if [ -n "$EXTENSION_VERSION" ]; then
+            OUTPUT_CRX="${EXTENSION_NAME}_${EXTENSION_VERSION}.crx"
+            mv "./$EXTENSION_NAME.crx" "./$OUTPUT_CRX"
+          else
+            OUTPUT_CRX="${EXTENSION_NAME}.crx"
+            # File is already named correctly; no rename needed.
+          fi
+
+          echo "OUTPUT_CRX=$OUTPUT_CRX" >> "$GITHUB_ENV"
+          echo "Packed: $OUTPUT_CRX ($(wc -c < "./$OUTPUT_CRX") bytes)"
+
+      # ── Upload ────────────────────────────────────────────────────────────
+      - name: Upload CRX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.OUTPUT_CRX }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+      # ── Cleanup ───────────────────────────────────────────────────────────
+      # Runs even if a previous step failed so key.pem never lingers on disk.
+      - name: Delete key.pem
+        if: always()
+        run: rm -f ./key.pem
