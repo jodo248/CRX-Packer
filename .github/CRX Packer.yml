@@ -1,22 +1,24 @@
 #This workflow will install Python dependencies, run tests and lint with a single version of Python
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Python application
+name: CRX Packer
 
 on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+  #push:
+    #branches: [ "master" ]
+  #pull_request:
+    #branches: [ "master" ]
 
 permissions:
-  contents: read
+  contents: write
+  id-token: write
+  attestation: write
 
 # Change these two values to build a different extension - nothing else in this
 # file needs to be touched.
 env:
-  EXTENSION_NAME: ABC
-  EXTENSION_VERSION: 1
+  EXTENSION_NAME: test
+  EXTENSION_VERSION: 
 
 jobs:
   build:
@@ -33,11 +35,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Install Chrome 122
+    - name: Install Chrome 124
       uses: browser-actions/setup-chrome@v2
       id: setup-chrome
       with:
-        chrome-version: 122
+        chrome-version: 124
     - name: Extract extension source
       run: |
         set -e
@@ -83,7 +85,7 @@ jobs:
     - name: Upload CRX artifact
       uses: actions/upload-artifact@v7
       with:
-        path: ${{ env.EXTENSION_NAME }}_${{ env.EXTENSION_VERSION }}.crx
+        path: ${{ env.EXTENSION_NAME }}${{ env.EXTENSION_VERSION }}.crx
         archive: false
         if-no-files-found: error
         retention-days: 1
