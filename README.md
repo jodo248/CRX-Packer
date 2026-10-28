@@ -2,7 +2,7 @@
 
 ## **Usage (New)**
 
-1. Upload zip in ./file.zip
+1. Upload chromium extension in zip to `./*.zip`
 
 2. Run CRX Packer workflow.
    
