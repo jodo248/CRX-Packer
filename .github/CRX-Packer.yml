@@ -4,6 +4,7 @@
 name: CRX-Packer
 
 on:
+  workflow_dispatch:
   #push:
     #branches: [ "master" ]
   #pull_request:
@@ -18,7 +19,7 @@ permissions:
 # file needs to be touched.
 env:
   EXTENSION_NAME: test
-  EXTENSION_VERSION: 
+  EXTENSION_VERSION: 1
 
 jobs:
   build:
@@ -80,12 +81,12 @@ jobs:
     - name: Pack extension with Chrome
       run: |
         sudo apt-get update && sudo apt-get install -y xvfb
-        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension="./$EXTENSION_NAME" --pack-extension-key=${{ secrets.CRX3_PRIVATE_KEY }} --no-message-box --no-sandbox --no-zygote --disable-dev-shm-usage
-        mv "./$EXTENSION_NAME.crx" "./${EXTENSION_NAME}${EXTENSION_VERSION}.crx"
+        xvfb-run --auto-servernum "${{ steps.setup-chrome.outputs.chrome-path }}" --pack-extension="./$EXTENSION_NAME" --pack-extension-key=./key.pem --no-message-box --no-sandbox --no-zygote --disable-dev-shm-usage
+        mv "./$EXTENSION_NAME.crx" "./${EXTENSION_NAME}_${EXTENSION_VERSION}.crx"
     - name: Upload CRX artifact
       uses: actions/upload-artifact@v7
       with:
-        path: ${{ env.EXTENSION_NAME }}${{ env.EXTENSION_VERSION }}.crx
+        path: ${{ env.EXTENSION_NAME }}_${{ env.EXTENSION_VERSION }}.crx
         archive: false
         if-no-files-found: error
         retention-days: 1
