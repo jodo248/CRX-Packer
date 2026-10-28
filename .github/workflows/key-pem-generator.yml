@@ -11,7 +11,7 @@ jobs:
       # Step 1: Generate the private key using OpenSSL
       - name: Generate RSA Private Key
         run: |
-          openssl genrsa -out key.pem 4048
+          openssl genrsa -out key.pem 2048
           chmod 600 key.pem
 
       # Step 2: Upload the key.pem file as a workflow artifact
